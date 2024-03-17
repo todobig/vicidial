@@ -9,23 +9,99 @@ cd /tmp # Go somewhere safe
 
 
 # Add required repositories
-zypper ar https://download.opensuse.org/repositories/home:/vicidial/openSUSE_Leap_15.5/home:vicidial.repo
-zypper ar https://download.opensuse.org/repositories/home:/vicidial:/asterisk-16/openSUSE_Leap_15.5/home:vicidial:asterisk-16.repo
-zypper ar https://download.opensuse.org/repositories/home:/vicidial:/vicibox/openSUSE_Leap_15.5/home:vicidial:vicibox.repo
-zypper ar https://download.opensuse.org/repositories/devel:/languages:/perl/15.5/devel:languages:perl.repo
+
+$ZYPPER ar https://download.opensuse.org/repositories/home:/vicidial/openSUSE_Leap_15.5/ vicidial-main
+$ZYPPER ar https://download.opensuse.org/repositories/home:/vicidial:/asterisk-16/openSUSE_Leap_15.5/ vicidial-asterisk-16
+$ZYPPER ar https://download.opensuse.org/repositories/home:/vicidial:/vicibox/openSUSE_Leap_15.5/ vicibox
+$ZYPPER ar https://download.opensuse.org/repositories/devel:/languages:/perl/15.5/devel:languages:perl.repo
+
+# Import GPG keys for the repositories and refresh them
+$ZYPPER --gpg-auto-import-keys refresh
+
+# Install LAMP server pattern and necessary packages
+$ZYPPER --non-interactive in -t pattern lamp_server
+# List of packages is up-to-date and compatible with openSUSE Leap 15.5
+$ZYPPER --non-interactive in home_vicidial:libjansson4 
+
+$ZYPPER --non-interactive in adaptec-firmware aggregate apache2-mod_cband asterisk-dahdi bmon
+$ZYPPER --non-interactive in ddclient dhcp-client digitemp extundelete fonts-config git gnu_ddrescue
+$ZYPPER --non-interactive in htop iftop iotop iprelay iptraf-ng lame lshw lvm2 memtest86+
+$ZYPPER --non-interactive in mlocate mpt-firmware mtop mtr mydumper mytop ncftp net-tools-deprecated
+$ZYPPER --non-interactive in ngrep-sip nmap numad ntp openr2 OpenIPMI patch pcapsipdump
+$ZYPPER --non-interactive in perl-MIME-Lite perl-Net-SFTP-Foreign perl-MySQL-Diff perl-Term-ANSIColor phpMyAdmin php7-opcache
+$ZYPPER --non-interactive in pico ploticus python-eyeD3 recode sensord sensors sipp shim sngrep sshfs
+$ZYPPER --non-interactive in stress-ng sysstat tcpdump telnet vicibox-dynportal vicibox-firewall vicibox-install vicibox-ssl
+$ZYPPER --non-interactive in zip
 
 
-# Auto-import GPG keys and refresh repositories
-zypper --gpg-auto-import-keys ref
 
-# Install essential patterns and packages
-zypper --non-interactive in -t pattern lamp_server
-zypper --non-interactive in home_vicidial:libjansson4
-zypper --non-interactive in adaptec-firmware aggregate apache2-mod_cband asterisk-dahdi bmon ddclient dhcp-client digitemp extundelete fonts-config git gnu_ddrescue htop iftop iotop iprelay iptraf-ng lame lshw lvm2 memtest86+ mlocate mpt-firmware mtop mtr mydumper mytop ncftp net-tools-deprecated ngrep-sip nmap numad ntp openr2 OpenIPMI patch pcapsipdump perl-MIME-Lite perl-Net-SFTP-Foreign perl-MySQL-Diff perl-Term-ANSIColor phpMyAdmin php7-opcache pico ploticus python-eyeD3 recode sensord sensors sipp shim sngrep sshfs stress-ng sysstat tcpdump telnet vicibox-dynportal vicibox-firewall vicibox-install vicibox-ssl vsftpd zip
-zypper --non-interactive up
+# Create directories
+checkdir /usr/src/astguiclient
+# Load SVN
+cd /usr/src/astguiclient
+svn checkout svn://svn.eflo.net:3690/agc_2-X/trunk
+
+# Populdate locate database since we're in a somewhat sane state
+updatedb
+
+# Configure asterisk stuff
+checkdir /usr/share/asterisk/sounds
+checkdir /usr/share/asterisk/moh
+checkdir /var/lib/asterisk
+checkdir /usr/share/asterisk/agi-bin
+checkdir /etc/asterisk/keys
+checkdir /var/spool/asterisk/monitorDONE
+chown -R wwwrun /var/spool/asterisk/monitorDONE
+ln -s /usr/share/asterisk/agi-bin/ /var/lib/asterisk/agi-bin
+ln -s /usr/share/asterisk/sounds/ /var/lib/asterisk/sounds
+ln -s /usr/share/asterisk/moh/ /var/lib/asterisk/moh
+ln -s /usr/share/asterisk/moh/ /var/lib/asterisk/mohmp3
+ln -s /usr/share/asterisk/images /var/lib/asterisk/images
+ln -s /usr/share/asterisk/firmware /var/lib/asterisk/firmware
+ln -s /usr/share/asterisk/static-http/ /var/lib/asterisk/static-http
+sed -i 's+/usr/share/asterisk+/var/lib/asterisk+g' /etc/asterisk/asterisk.conf
+sed -i 's/;timestamp/timestamp/' /etc/asterisk/asterisk.conf
+sed -i 's/;execincludes = yes/execincludes = no/' /etc/asterisk/asterisk.conf
+sed -i 's/;verbose = 3/verbose = 21/' /etc/asterisk/asterisk.conf
+sed -i 's/;live_dangerously/live_dangerously/' /etc/asterisk/asterisk.conf
+sed -i 's/;enabled=yes/enabled=yes/g' /etc/asterisk/http.conf
+sed -i 's/bindaddr=127.0.0.1/bindaddr=0.0.0.0/g' /etc/asterisk/http.conf
+sed -i 's/;bindport=8088/bindport=8088/g' /etc/asterisk/http.conf
+sed -i 's/;tlsenable=yes/tlsenable=yes/g' /etc/asterisk/http.conf
+sed -i 's/;tlsbindaddr=0.0.0.0:8089/tlsbindaddr=0.0.0.0:8089/g' /etc/asterisk/http.conf
+sed -i 's+;tlscertfile=</path/to/certificate.pem>+tlscertfile=/etc/apache2/ssl.crt/vicibox.crt+g' /etc/asterisk/http.conf
+sed -i 's+;tlsprivatekey=</path/to/private.pem>+tlsprivatekey=/etc/apache2/ssl.key/vicibox.key+g' /etc/asterisk/http.conf
+codec-install
+modprobe dahdi
+/usr/sbin/dahdi_genconf
+
+# Make an entry for ramdrive if it's not already there
+if ! [[ `cat /etc/fstab | grep monitor` ]]; then
+        /bin/echo "tmpfs   /var/spool/asterisk/monitor       tmpfs      rw,size=6G              0 0" >> /etc/fstab
+fi
+
+# Some asterisk fixups
+cd /etc/asterisk
+echo '' > extensions.ael
+rm modules.conf
+cp /usr/share/vicibox/modules.conf /etc/asterisk/
+
+# Configure Apache2 and PHP specific stuff
+/usr/sbin/a2enmod rewrite
+/usr/sbin/a2enmod php7
+/usr/sbin/a2enmod status
+/usr/sbin/a2enmod mod_socache_shmcb
+#/usr/sbin/a2enflag SSL 
+cp /usr/share/vicibox/server-tuning.conf /etc/apache2/
+cp /usr/share/vicibox/mod_deflate.conf /etc/apache2/conf.d/
+cd /etc/apache2/conf.d
+if [ -d /etc/apache2/conf.d/manual.conf ]; then
+	rm manual.conf
+fi
 
 
-
+chown -R mysql:mysql /var/lib/mysql
+chown -R mysql:mysql /srv/mysql
 
 
 

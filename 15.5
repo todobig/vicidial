@@ -2,10 +2,61 @@
 
 ### Global node configuration, applicable to any server role
 
-# Export a usable PATH
+# Export a usable path so things work right
 PATH="/sbin:/usr/sbin:/usr/local/sbin:/root/bin:/usr/local/bin:/usr/bin:/bin"
 export PATH
 cd /tmp # Go somewhere safe
+
+# If we are in debug, then give useful wget and CLI output, otherwise be quiet about it
+WGET="wget -nv"
+ZYPPER='zypper'
+if [ "${0}" == "debug" ]; then
+	WGET="wget"
+	ZYPPER='zypper'
+fi
+
+# Simple check for directory, make if doesn't exist subversion
+function checkdir {
+	if [ ! -d $1 ]; then
+		echo -n " Creating dir $1..."
+		mkdir -p $1
+		echo "done."
+	fi
+}
+
+# Checks to see if the file exists in the current directory unless directory is supplied, and then downloads it
+function checkget {
+	# Check to see if we are supplied a target directory, otherwise assume current directory
+	if [ -z "$2" ]; then
+		LOCALDIR="$PWD"
+	else
+		LOCALDIR="$2"
+	fi
+	
+	# Make sure directory exists
+	checkdir "$LOCALDIR"
+	cd $LOCALDIR
+	
+	# And now check for our file and download if it's not there
+	FILE="${1##*/}"
+	if [ ! -f $FILE ]; then
+		echo -n " Downloading $1..."
+		$WGET $1 -O $PWD/$FILE
+		echo "done."
+	fi
+	
+	# If we were provided a file mask, apply it
+	if [ ! -z "$3" ]; then
+		chmod $3 $PWD/$FILE
+	fi
+}
+
+# Sometimes the CD gets left in as a repo, so check and remove it
+CDTEST=`zypper lr --url | grep cd: | awk '{split($0,a,"|"); print a[1]}'`
+if [ ! -z "$CDTEST" ]; then
+        echo "Removing CD-Rom repository"
+		$ZYPPER rr $CDTEST
+fi
 
 
 # Add required repositories
